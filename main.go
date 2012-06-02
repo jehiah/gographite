@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -27,7 +28,8 @@ type Packet struct {
 var (
 	serviceAddress  = flag.String("address", ":8125", "UDP service address")
 	graphiteAddress = flag.String("graphie", "localhost:2003",
-				"Graphite service address")
+		"Graphite service address (or - to dissable)")
+	outputFile       = flag.String("output-file", "stats.csv", "data file to write stats into")
 	flushInterval    = flag.Int64("flush-interval", 10, "Flush interval")
 	percentThreshold = flag.Int("percent-threshold", 90, "Threshold percent")
 )
@@ -39,10 +41,6 @@ var (
 )
 
 func monitor() {
-	var err error
-	if err != nil {
-		log.Println(err)
-	}
 	t := time.NewTicker(time.Duration(*flushInterval) * time.Second)
 	for {
 		select {
@@ -68,12 +66,32 @@ func monitor() {
 }
 
 func submit() {
-	client, err := net.Dial(TCP, *graphiteAddress)
-	if client != nil {
+	var client net.Conn
+
+	if *graphiteAddress != "-" {
+		client, err := net.Dial(TCP, *graphiteAddress)
+		if err != nil {
+			log.Printf("Error dialing", err.Error())
+		} else {
+			defer client.Close()
+		}
+	}
+
+	file, err := os.OpenFile(*outputFile, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Printf("Error opening file", err.Error())
+	} else {
+		defer file.Close()
+	}
+
+	if client != nil && file != nil {
 		numStats := 0
 		now := time.Now()
 		buffer := bytes.NewBufferString("")
 		for s, c := range counters {
+			if c == 0 {
+				continue
+			}
 			value := int64(c) / ((*flushInterval * int64(time.Second)) / 1e3)
 			fmt.Fprintf(buffer, "stats.%s %d %d\n", s, value, now)
 			fmt.Fprintf(buffer, "stats_counts.%s %d %d\n", s, c, now)
@@ -112,11 +130,16 @@ func submit() {
 			}
 			numStats++
 		}
+		if numStats == 0 {
+			return;
+		}
 		fmt.Fprintf(buffer, "statsd.numStats %d %d\n", numStats, now)
-		client.Write(buffer.Bytes())
-		client.Close()
-	} else {
-		log.Printf(err.Error())
+		if client != nil {
+			client.Write(buffer.Bytes())
+		}
+		if file != nil {
+			file.Write(buffer.Bytes())
+		}
 	}
 }
 
@@ -150,10 +173,12 @@ func handleMessage(conn *net.UDPConn, remaddr net.Addr, buf *bytes.Buffer) {
 
 func udpListener() {
 	address, _ := net.ResolveUDPAddr(UDP, *serviceAddress)
+	log.Printf("Listening on %s", address)
 	listener, err := net.ListenUDP(UDP, address)
 	if err != nil {
 		log.Fatalf("ListenAndServe: %s", err.Error())
 	}
+	defer listener.Close()
 	for {
 		message := make([]byte, 512)
 		n, remaddr, error := listener.ReadFrom(message)
@@ -163,7 +188,6 @@ func udpListener() {
 		buf := bytes.NewBuffer(message[0:n])
 		go handleMessage(listener, remaddr, buf)
 	}
-	listener.Close()
 }
 
 func main() {
