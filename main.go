@@ -87,7 +87,7 @@ func submit() {
 
 	if client != nil || file != nil {
 		numStats := 0
-		now := time.Now()
+		now := time.Now().Unix()
 		buffer := bytes.NewBufferString("")
 		for s, c := range counters {
 			if c == 0 {
