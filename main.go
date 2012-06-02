@@ -81,10 +81,11 @@ func submit() {
 	if err != nil {
 		log.Printf("Error opening file", err.Error())
 	} else {
+		log.Printf("opened %s", *outputFile)
 		defer file.Close()
 	}
 
-	if client != nil && file != nil {
+	if client != nil || file != nil {
 		numStats := 0
 		now := time.Now()
 		buffer := bytes.NewBufferString("")
@@ -100,6 +101,7 @@ func submit() {
 		}
 		for u, t := range timers {
 			if len(t) > 0 {
+				numStats++
 				sort.Ints(t)
 				min := t[0]
 				max := t[len(t)-1]
@@ -128,17 +130,18 @@ func submit() {
 				fmt.Fprintf(buffer, "stats.timers.%s.lower %d %d\n", u, min, now)
 				fmt.Fprintf(buffer, "stats.timers.%s.count %d %d\n", u, count, now)
 			}
-			numStats++
 		}
+		log.Printf("got %d stats", numStats)
 		if numStats == 0 {
-			return;
+			return
 		}
+		data := buffer.Bytes()
 		fmt.Fprintf(buffer, "statsd.numStats %d %d\n", numStats, now)
 		if client != nil {
-			client.Write(buffer.Bytes())
+			client.Write(data)
 		}
 		if file != nil {
-			file.Write(buffer.Bytes())
+			file.Write(data)
 		}
 	}
 }
@@ -147,6 +150,7 @@ func handleMessage(conn *net.UDPConn, remaddr net.Addr, buf *bytes.Buffer) {
 	var packet Packet
 	var sanitizeRegexp = regexp.MustCompile("[^a-zA-Z0-9\\-_\\.:\\|@]")
 	var packetRegexp = regexp.MustCompile("([a-zA-Z0-9_]+):([0-9]+)\\|(c|ms)(\\|@([0-9\\.]+))?")
+	log.Printf("got %s", buf.String())
 	s := sanitizeRegexp.ReplaceAllString(buf.String(), "")
 	for _, item := range packetRegexp.FindAllStringSubmatch(s, -1) {
 		value, err := strconv.Atoi(item[2])
