@@ -77,11 +77,10 @@ func submit() {
 		}
 	}
 
-	file, err := os.OpenFile(*outputFile, os.O_RDWR|os.O_CREATE, 0666)
+	file, err := os.OpenFile(*outputFile, os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		log.Printf("Error opening file", err.Error())
 	} else {
-		log.Printf("opened %s", *outputFile)
 		defer file.Close()
 	}
 
@@ -131,12 +130,12 @@ func submit() {
 				fmt.Fprintf(buffer, "stats.timers.%s.count %d %d\n", u, count, now)
 			}
 		}
-		log.Printf("got %d stats", numStats)
 		if numStats == 0 {
 			return
 		}
-		data := buffer.Bytes()
+		log.Printf("got %d stats", numStats)
 		fmt.Fprintf(buffer, "statsd.numStats %d %d\n", numStats, now)
+		data := buffer.Bytes()
 		if client != nil {
 			client.Write(data)
 		}
