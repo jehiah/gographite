@@ -53,7 +53,6 @@ func TestPacketParse(t *testing.T) {
 	assert.Equal(t, "c", packet.Modifier)
 	assert.Equal(t, float32(1), packet.Sampling)
 
-
 	d = []byte("a.key.with-0.dash:4|c\ngauge:3|g")
 	packets = parseMessage(bytes.NewBuffer(d))
 	assert.Equal(t, len(packets), 2)
